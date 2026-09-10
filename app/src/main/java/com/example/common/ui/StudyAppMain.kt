@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import com.example.common.navigation.ModernFloatingNavigationBar
 import com.example.common.navigation.StudyDestination
 import com.example.common.ui.screens.AdmissionInfoScreen
 import com.example.common.ui.screens.ChapterDetailScreen
+import com.example.common.ui.screens.ChapterListScreen
 import com.example.common.ui.screens.CoursesScreen
 import com.example.common.ui.screens.ExploreScreen
 import com.example.common.ui.screens.HomeScreen
@@ -62,7 +64,15 @@ sealed interface ActiveScreenState {
     data object Login : ActiveScreenState
     data class QuarterDetail(val courseTitle: String) : ActiveScreenState
     data class SubjectDetail(val subjectTitle: String) : ActiveScreenState
-    data class ChapterDetail(val chapterTitle: String, val statusBadge: String = "পড়ানো শেষ") : ActiveScreenState
+    data class ChapterList(val subjectTitle: String = "বাংলা ১ম পত্র", val subjectId: String = "609130954") : ActiveScreenState
+    data class ChapterDetail(
+        val chapterId: String = "ch_03",
+        val chapterTitle: String,
+        val statusBadge: String = "পড়ানো শেষ",
+        val programId: String = "6864d3a806800acba2e27099",
+        val phaseId: String = "6864d4e806800acba2e270e1",
+        val subjectId: String = "609130954"
+    ) : ActiveScreenState
     data class LecturePlayer(val lecture: LectureItem, val subjectTitle: String = "বাংলা ১ম পত্র") : ActiveScreenState
 }
 
@@ -74,6 +84,11 @@ sealed interface ActiveScreenState {
 fun StudyAppMain(
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        com.example.common.network.UserSessionManager.init(context)
+    }
+
     var currentDestination by rememberSaveable { mutableStateOf(StudyDestination.HOME) }
     var screenBackstack by remember { mutableStateOf(listOf<ActiveScreenState>(ActiveScreenState.MainTabs)) }
 
@@ -315,16 +330,44 @@ private fun RenderScreen(
                     subjectTitle = screen.subjectTitle,
                     onBackClick = onNavigateBack,
                     onChapterClick = { chapter ->
-                        onNavigate(ActiveScreenState.ChapterDetail(chapter.titleBn, chapter.statusBadge))
+                        onNavigate(
+                            ActiveScreenState.ChapterDetail(
+                                chapterId = chapter.id,
+                                chapterTitle = chapter.titleBn,
+                                statusBadge = chapter.statusBadge
+                            )
+                        )
                     }
                 )
             }
 
-            // Screenshot 5: Chapter Detail Screen
+            // Academic Chapter List Screen (GraphQL PhaseWiseChapters)
+            is ActiveScreenState.ChapterList -> {
+                ChapterListScreen(
+                    subjectTitle = screen.subjectTitle,
+                    subjectId = screen.subjectId,
+                    onBackClick = onNavigateBack,
+                    onChapterClick = { gqlChapter ->
+                        onNavigate(
+                            ActiveScreenState.ChapterDetail(
+                                chapterId = gqlChapter.chapterId,
+                                chapterTitle = gqlChapter.chapterName,
+                                statusBadge = gqlChapter.statusBadgeBn
+                            )
+                        )
+                    }
+                )
+            }
+
+            // Screenshot 5: Chapter Detail Screen (3 Tabs: Classes & Lectures, Exams, Resources)
             is ActiveScreenState.ChapterDetail -> {
                 ChapterDetailScreen(
+                    chapterId = screen.chapterId,
                     chapterTitle = screen.chapterTitle,
                     statusBadge = screen.statusBadge,
+                    programId = screen.programId,
+                    phaseId = screen.phaseId,
+                    subjectId = screen.subjectId,
                     onBackClick = onNavigateBack,
                     onLectureClick = { lecture ->
                         onNavigate(ActiveScreenState.LecturePlayer(lecture))

@@ -68,31 +68,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.common.model.MockStudyData
 import com.example.common.model.UserProfile
+import com.example.common.viewmodel.SyllabusSyncUiState
+import com.example.common.viewmodel.SyllabusViewModel
 import kotlinx.coroutines.launch
 
 /**
  * Modern, High-Craft Syllabus Management Screen ("সিলেবাস পরিবর্তন")
  * Matches user's screenshots:
- * - Screenshot 1: Overview card showing current Syllabus:
- *   [ক্লাস: এইচএসসি, গ্রুপ: বিজ্ঞান, পরীক্ষার ধরন: এইচএসসি, পরীক্ষার সাল: ২০২৭]
- *   + "ক্লাস, পরীক্ষার ধরন ও গ্রুপ পরিবর্তনের মাধ্যমে তোমার সিলেবাস পরিবর্তন করো"
- *   + Button "সিলেবাস পরিবর্তন"
- * - Screenshot 2 & 3: Interactive Class, Exam Batch & Group selector
- *   + Class Pills: ক্লাস ৫, ৬, ৭, ৮, ৯, ১০, এইচএসসি, এডমিশন
- *   + Exam Year Pills: ২০২৫, ২০২৬, ২০২৭, ২০২৮
- *   + Group Pills: বিজ্ঞান, মানবিক, ব্যবসায় শিক্ষা
- *   + Button "এগিয়ে যাও" -> Updates syllabus and persists to UserProfile
+ * - Overview card showing current Syllabus
+ * - Interactive Class, Exam Year & Group selector
+ *   + Class: ক্লাস ৫ থেকে ১০, এইচএসসি, এডমিশন
+ *   + Exam Year: ২০২৫, ২০২৬, ২০২৭, ২০২৮
+ *   + Group: বিজ্ঞান, মানবিক, ব্যবসায় শিক্ষা
+ * - "এগিয়ে যাও" triggers listAcademicProgramByEnrollment & ProgramPhasesByStudent
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SyllabusChangeScreen(
     onBackClick: () -> Unit,
     onSyllabusUpdated: () -> Unit,
+    viewModel: SyllabusViewModel = remember { SyllabusViewModel() },
     modifier: Modifier = Modifier
 ) {
     var isEditing by remember { mutableStateOf(false) }
+
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val isSyncing = syncState is SyllabusSyncUiState.Loading
 
     // Initial state from current profile
     val currentProfile = MockStudyData.currentUserProfile
@@ -177,19 +181,20 @@ fun SyllabusChangeScreen(
                     onBatchSelected = { selectedBatch = it },
                     selectedGroup = selectedGroup,
                     onGroupSelected = { selectedGroup = it },
+                    isSyncing = isSyncing,
                     onConfirm = {
-                        // Persist updated syllabus
-                        val fullBatchString = if (selectedClass == "এইচএসসি") "এইচএসসি $selectedBatch" else "ব্যাচ $selectedBatch"
-                        MockStudyData.currentUserProfile = MockStudyData.currentUserProfile.copy(
-                            studentClass = selectedClass,
-                            examBatch = fullBatchString,
-                            group = selectedGroup
+                        viewModel.syncSyllabus(
+                            selectedClass = selectedClass,
+                            selectedYear = selectedBatch,
+                            selectedGroup = selectedGroup,
+                            onSuccess = {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("সিলেবাস এবং কোর্স ফেজ সফলভাবে সিঙ্ক করা হয়েছে!")
+                                }
+                                isEditing = false
+                                onSyllabusUpdated()
+                            }
                         )
-                        scope.launch {
-                            snackbarHostState.showSnackbar("সিলেবাস সফলভাবে আপডেট করা হয়েছে!")
-                        }
-                        isEditing = false
-                        onSyllabusUpdated()
                     }
                 )
             }
@@ -367,6 +372,7 @@ private fun SyllabusSelectorView(
     onBatchSelected: (String) -> Unit,
     selectedGroup: String,
     onGroupSelected: (String) -> Unit,
+    isSyncing: Boolean = false,
     onConfirm: () -> Unit
 ) {
     val classOptions = listOf(
@@ -388,8 +394,6 @@ private fun SyllabusSelectorView(
         Pair("B", "ব্যবসায় শিক্ষা")
     )
 
-    val isHscOrAdmission = selectedClass == "এইচএসসি" || selectedClass == "এডমিশন" || selectedClass == "ক্লাস ১০" || selectedClass == "ক্লাস ৯"
-
     Scaffold(
         bottomBar = {
             Surface(
@@ -406,6 +410,7 @@ private fun SyllabusSelectorView(
                 ) {
                     Button(
                         onClick = onConfirm,
+                        enabled = !isSyncing && selectedClass.isNotEmpty(),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (selectedClass.isNotEmpty()) Color(0xFF1E3A8A) else Color(0xFF94A3B8)
@@ -415,12 +420,27 @@ private fun SyllabusSelectorView(
                             .height(52.dp)
                             .testTag("button_confirm_syllabus")
                     ) {
-                        Text(
-                            text = "এগিয়ে যাও",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                        if (isSyncing) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.5.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "সিঙ্ক হচ্ছে...",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        } else {
+                            Text(
+                                text = "এগিয়ে যাও",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
@@ -436,10 +456,10 @@ private fun SyllabusSelectorView(
         ) {
             item {
                 Spacer(modifier = Modifier.height(10.dp))
-                // Title 1: তুমি কোন ক্লাসে লেখাপড়া করছো?
+                // Section 1: ক্লাস নির্বাচন
                 Text(
-                    text = "তুমি কোন ক্লাসে লেখাপড়া করছো?",
-                    fontSize = 18.sp,
+                    text = "১. তুমি কোন ক্লাসে লেখাপড়া করছো?",
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1E293B)
                 )
@@ -463,66 +483,63 @@ private fun SyllabusSelectorView(
                 }
             }
 
-            // If HSC or upper class is selected, show Exam Batch & Group (Screenshot 3)
-            if (isHscOrAdmission) {
-                item {
-                    // Title 2: তোমার এইচএসসি পরীক্ষার ব্যাচ সিলেক্ট করো*
-                    Row {
-                        Text(
-                            text = "তোমার $selectedClass পরীক্ষার ব্যাচ সিলেক্ট করো",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                        Text(text = "*", color = Color.Red, fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        batchOptions.forEach { batch ->
-                            val isSelected = selectedBatch == batch
-                            BatchPillItem(
-                                batch = batch,
-                                isSelected = isSelected,
-                                onClick = { onBatchSelected(batch) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
+            item {
+                // Section 2: পরীক্ষার সাল নির্বাচন
+                Row {
+                    Text(
+                        text = "২. পরীক্ষার সাল সিলেক্ট করো",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E293B)
+                    )
+                    Text(text = " *", color = Color.Red, fontWeight = FontWeight.Bold)
                 }
 
-                item {
-                    // Title 3: গ্রুপ সিলেক্ট করো*
-                    Row {
-                        Text(
-                            text = "গ্রুপ সিলেক্ট করো",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    batchOptions.forEach { batch ->
+                        val isSelected = selectedBatch == batch
+                        BatchPillItem(
+                            batch = batch,
+                            isSelected = isSelected,
+                            onClick = { onBatchSelected(batch) },
+                            modifier = Modifier.weight(1f)
                         )
-                        Text(text = "*", color = Color.Red, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+            item {
+                // Section 3: গ্রুপ নির্বাচন
+                Row {
+                    Text(
+                        text = "৩. গ্রুপ সিলেক্ট করো",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E293B)
+                    )
+                    Text(text = " *", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
 
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        groupOptions.forEach { (badge, group) ->
-                            val isSelected = selectedGroup == group
-                            GroupPillItem(
-                                badge = badge,
-                                group = group,
-                                isSelected = isSelected,
-                                onClick = { onGroupSelected(group) }
-                            )
-                        }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    groupOptions.forEach { (badge, group) ->
+                        val isSelected = selectedGroup == group
+                        GroupPillItem(
+                            badge = badge,
+                            group = group,
+                            isSelected = isSelected,
+                            onClick = { onGroupSelected(group) }
+                        )
                     }
                 }
             }

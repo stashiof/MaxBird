@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,7 +91,53 @@ fun ProfileScreen(
     modifier: Modifier = Modifier
 ) {
     var notificationsEnabled by remember { mutableStateOf(true) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val userProfile = MockStudyData.currentUserProfile
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Logout",
+                    tint = Color(0xFFEF4444)
+                )
+            },
+            title = {
+                Text(
+                    text = "লগ আউট নিশ্চিতকরণ",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "আপনি কি নিশ্চিত যে আপনি আপনার অ্যাকাউন্ট (${userProfile.phone}) থেকে লগ আউট করতে চান?\n\nলগ আউট না করা পর্যন্ত আপনার অ্যাকাউন্ট সুরক্ষিত থাকবে এবং অ্যাপ বন্ধ করে চালু করলেও লগইন বজায় থাকবে।",
+                    fontSize = 14.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        com.example.common.network.UserSessionManager.logout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("হ্যাঁ, লগ আউট করুন", color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("বাতিল")
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = modifier
@@ -183,7 +231,8 @@ fun ProfileScreen(
                 onNotificationToggle = { notificationsEnabled = it },
                 onSyllabusClick = onSyllabusChangeClick,
                 onAdmissionInfoClick = onAdmissionInfoClick,
-                onLoginClick = onLoginClick
+                onLoginClick = onLoginClick,
+                onLogoutClick = { showLogoutDialog = true }
             )
         }
 
@@ -663,7 +712,8 @@ private fun SettingsSection(
     onNotificationToggle: (Boolean) -> Unit,
     onSyllabusClick: () -> Unit = {},
     onAdmissionInfoClick: () -> Unit = {},
-    onLoginClick: () -> Unit = {}
+    onLoginClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -840,7 +890,7 @@ private fun SettingsSection(
                 Box(modifier = Modifier.height(1.dp))
             }
 
-            // Login Option (Shikho API Auth Login)
+            // Login / Switch Account Option (Shikho API Auth Login)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -883,6 +933,62 @@ private fun SettingsSection(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (MockStudyData.currentUserProfile.isLoggedIn) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(1.dp)
+                ) {
+                    Box(modifier = Modifier.height(1.dp))
+                }
+
+                // Logout Option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onLogoutClick() }
+                        .testTag("logout_settings_row"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFEE2E2)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "লগ আউট করুন",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF4444)
+                            )
+                            Text(
+                                text = "অ্যাকাউন্ট থেকে সাইন আউট করো",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFFEF4444)
+                    )
+                }
             }
         }
     }

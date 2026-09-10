@@ -28,8 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Payments
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.common.network.CourseContentUiState
+import com.example.common.network.EnrollPaymentPlanItem
+import com.example.common.viewmodel.EnrollmentPaymentViewModel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -85,9 +91,25 @@ data class EnrolledCourseInfo(
 fun AdmissionInfoScreen(
     onBackClick: () -> Unit,
     onNavigateToQuarter: (String) -> Unit = {},
+    viewModel: EnrollmentPaymentViewModel = remember { EnrollmentPaymentViewModel() },
     modifier: Modifier = Modifier
 ) {
-    val enrolledCourses = remember {
+    val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
+    val phasesState by viewModel.phasesState.collectAsStateWithLifecycle()
+
+    val liveQuarters = if (phasesState.isNotEmpty()) {
+        phasesState.map { it.title }
+    } else {
+        listOf(
+            "কোয়ার্টার ১",
+            "কোয়ার্টার ২",
+            "কোয়ার্টার ৩",
+            "কোয়ার্টার ৪",
+            "কোয়ার্টার ৫"
+        )
+    }
+
+    val enrolledCourses = remember(phasesState) {
         listOf(
             EnrolledCourseInfo(
                 id = "hsc27_science",
@@ -97,13 +119,7 @@ fun AdmissionInfoScreen(
                 bannerGradient = listOf(Color(0xFF881337), Color(0xFF4C0519)),
                 validityDate = "০১ সেপ্টেম্বর, ২০২৬",
                 isExpiringSoon = false,
-                quarters = listOf(
-                    "কোয়ার্টার ১",
-                    "কোয়ার্টার ২",
-                    "কোয়ার্টার ৩",
-                    "কোয়ার্টার ৪",
-                    "কোয়ার্টার ৫"
-                )
+                quarters = liveQuarters
             ),
             EnrolledCourseInfo(
                 id = "hsc27_ict",
@@ -173,6 +189,8 @@ fun AdmissionInfoScreen(
         }
     }
 
+    val livePaymentPlans = (paymentState as? CourseContentUiState.Success)?.data
+
     Scaffold(
         topBar = {
             Surface(
@@ -222,6 +240,7 @@ fun AdmissionInfoScreen(
                 EnrolledCourseCard(
                     course = course,
                     isExpanded = isExpanded,
+                    paymentPlans = if (course.id == "hsc27_science") livePaymentPlans else null,
                     onToggleExpand = {
                         expandedStates[course.id] = !isExpanded
                     },
@@ -245,6 +264,7 @@ fun AdmissionInfoScreen(
 private fun EnrolledCourseCard(
     course: EnrolledCourseInfo,
     isExpanded: Boolean,
+    paymentPlans: List<EnrollPaymentPlanItem>? = null,
     onToggleExpand: () -> Unit,
     onQuarterClick: (String) -> Unit
 ) {
@@ -333,7 +353,7 @@ private fun EnrolledCourseCard(
                 }
             }
 
-            // Expanded content: Quarters / Full Course List
+            // Expanded content: Quarters / Full Course List & Installments
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = fadeIn() + expandVertically(),
@@ -366,6 +386,39 @@ private fun EnrolledCourseCard(
                             )
                         }
                     }
+
+                    // Installment Details (ListEnrollPaymentPlan)
+                    if (paymentPlans != null && paymentPlans.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        HorizontalDivider(
+                            color = Color(0xFFF1F5F9),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Payments,
+                                contentDescription = null,
+                                tint = Color(0xFF2563EB),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "কিস্তির বিবরণী (Installment Plans)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+
+                        paymentPlans.forEach { plan ->
+                            InstallmentRowItem(plan)
+                        }
+                    }
                 }
             }
 
@@ -395,6 +448,65 @@ private fun EnrolledCourseCard(
                     fontWeight = FontWeight.SemiBold,
                     color = if (course.isExpiringSoon) Color(0xFFE11D48) else Color(0xFF059669)
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Single installment row display
+ */
+@Composable
+private fun InstallmentRowItem(plan: EnrollPaymentPlanItem) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = plan.titleBn,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+                Text(
+                    text = plan.paymentDate ?: plan.dueDate ?: "পরিশোধ সম্পন্ন",
+                    fontSize = 11.5.sp,
+                    color = Color(0xFF64748B)
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val amount = plan.pricePlan?.amount?.toInt() ?: 4000
+                Text(
+                    text = "৳$amount",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (plan.isPaid) Color(0xFFDCFCE7) else Color(0xFFFEF3C7)
+                ) {
+                    Text(
+                        text = if (plan.isPaid) "✓ পরিশোধিত" else "বকেয়া",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (plan.isPaid) Color(0xFF16A34A) else Color(0xFFD97706),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
             }
         }
     }

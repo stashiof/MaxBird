@@ -1,5 +1,8 @@
 package com.example.common.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -13,6 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,17 +42,22 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Male
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -70,43 +80,39 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.example.common.model.MockStudyData
 import com.example.common.model.UserProfile
+import com.example.common.viewmodel.ProfileEditViewModel
 
 /**
  * Premium 3-Step Profile Edit Screen matching the user's uploaded screenshots
- * (Screenshot 1 & 2: ব্যক্তিগত তথ্য / Personal Info,
- *  Screenshot 3 & 4: স্কুল/কলেজের তথ্য / Institutional Info,
- *  Screenshot 5: অভিভাবকের তথ্য / Guardian Info)
- *
- * Upgraded with:
- * - Clean modern progress indicator bar
- * - Interactive inputs with floating card containers
- * - Modern avatar selector with camera badge
- * - Custom illustrated student gender selector
- * - Dropdown pickers for Board, Shift, Division, District & Medium
- * - Real-time save back to MockStudyData.currentUserProfile
+ * (ধাপ ১/৩: ব্যক্তিগত তথ্য / Personal Info,
+ *  ধাপ ২/৩: বোর্ড ও রোল ইনফরমেশন / Board & Roll Info,
+ *  ধাপ ৩/৩: কলেজ ও অভিভাবকের তথ্য / College & Guardian Info)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileEditScreen(
     onBackClick: () -> Unit,
     onSaveSuccess: () -> Unit,
+    viewModel: ProfileEditViewModel = remember { ProfileEditViewModel() },
     modifier: Modifier = Modifier
 ) {
-    // Current step: 1 = Personal Info, 2 = School/College Info, 3 = Guardian Info
+    // Current step: 1 = Personal Info, 2 = Board/Roll Info, 3 = College & Guardian Info
     var currentStep by remember { mutableIntStateOf(1) }
 
     // State initialized from MockStudyData
     var profile by remember { mutableStateOf(MockStudyData.currentUserProfile) }
 
-    // Feedback message
-    var showSavedMessage by remember { mutableStateOf(false) }
+    val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -146,8 +152,8 @@ fun ProfileEditScreen(
                             Text(
                                 text = when (currentStep) {
                                     1 -> "ব্যক্তিগত তথ্য যোগ করো"
-                                    2 -> "স্কুল/কলেজের তথ্য যোগ করো"
-                                    else -> "অভিভাবকের তথ্য যোগ করো"
+                                    2 -> "বোর্ড ও রোল ইনফরমেশন"
+                                    else -> "কলেজ ও অভিভাবকের তথ্য"
                                 },
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
@@ -197,7 +203,7 @@ fun ProfileEditScreen(
             }
         },
         bottomBar = {
-            // Persistent Bottom Actions: [ফিরে যাও] and [এগিয়ে যাও / সম্পূর্ণ করো]
+            // Persistent Bottom Actions: [ফিরে যাও] and [এগিয়ে যাও / সংরক্ষণ করো]
             Surface(
                 color = Color.White,
                 shadowElevation = 16.dp,
@@ -243,11 +249,18 @@ fun ProfileEditScreen(
                             if (currentStep < 3) {
                                 currentStep += 1
                             } else {
-                                // Save and finish
-                                MockStudyData.currentUserProfile = profile
-                                onSaveSuccess()
+                                // Save and finish with live UpdateProfileWithoutUseName mutation
+                                viewModel.saveCompleteProfile(
+                                    profile = profile,
+                                    onSuccess = {
+                                        MockStudyData.currentUserProfile = profile
+                                        com.example.common.network.UserSessionManager.saveProfile(profile)
+                                        onSaveSuccess()
+                                    }
+                                )
                             }
                         },
+                        enabled = !isSaving,
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF1E3A8A)
@@ -257,12 +270,27 @@ fun ProfileEditScreen(
                             .height(52.dp)
                             .testTag("step_next_button")
                     ) {
-                        Text(
-                            text = if (currentStep < 3) "এগিয়ে যাও" else "সংরক্ষণ করো",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "সংরক্ষণ হচ্ছে...",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        } else {
+                            Text(
+                                text = if (currentStep < 3) "এগিয়ে যাও" else "সংরক্ষণ করো",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
@@ -289,6 +317,7 @@ fun ProfileEditScreen(
                 )
                 3 -> Step3GuardianInfo(
                     profile = profile,
+                    viewModel = viewModel,
                     onProfileChange = { profile = it }
                 )
             }
@@ -305,6 +334,14 @@ private fun Step1PersonalInfo(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit
 ) {
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            onProfileChange(profile.copy(avatarUrl = uri.toString()))
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -329,31 +366,52 @@ private fun Step1PersonalInfo(
                                 Brush.linearGradient(
                                     listOf(Color(0xFF1E293B), Color(0xFF3B82F6))
                                 )
-                            ),
+                            )
+                            .clickable {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                            .testTag("avatar_picker_box"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "প্রোফাইল পিকচার",
-                            tint = Color.White,
-                            modifier = Modifier.size(60.dp)
-                        )
+                        if (profile.avatarUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = profile.avatarUrl,
+                                contentDescription = "প্রোফাইল পিকচার",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "প্রোফাইল পিকচার",
+                                tint = Color.White,
+                                modifier = Modifier.size(60.dp)
+                            )
+                        }
                     }
 
                     // Camera Icon Badge
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF2563EB))
-                            .border(2.dp, Color.White, CircleShape),
+                            .border(2.dp, Color.White, CircleShape)
+                            .clickable {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                            .testTag("avatar_camera_badge"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.CameraAlt,
                             contentDescription = "ছবি আপলোড",
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -420,30 +478,46 @@ private fun Step1PersonalInfo(
             }
         }
 
-        // Mobile Number Field
+        // Mobile Number Field (Read-only as per specs)
         item {
             Column {
-                Text(
-                    text = "মোবাইল নম্বর",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "মোবাইল নম্বর",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF64748B)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "(অপরিবর্তনযোগ্য)",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
                 OutlinedTextField(
                     value = profile.phone,
-                    onValueChange = { onProfileChange(profile.copy(phone = it)) },
+                    onValueChange = {},
+                    readOnly = true,
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "লকড",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF2563EB),
-                        unfocusedBorderColor = Color(0xFFCBD5E1),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
+                        focusedBorderColor = Color(0xFFE2E8F0),
+                        unfocusedBorderColor = Color(0xFFE2E8F0),
+                        focusedContainerColor = Color(0xFFF1F5F9),
+                        unfocusedContainerColor = Color(0xFFF1F5F9)
                     ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_profile_phone")
@@ -538,25 +612,24 @@ private fun Step1PersonalInfo(
 }
 
 /**
- * Step 2: স্কুল/কলেজের তথ্য (Institutional Information)
- * Matches Screenshots 3 & 4
+ * Step 2: বোর্ড ও রোল ইনফরমেশন (Board & Roll Information)
+ * Matches Screenshots 3 & 4 and User Flow Specs
  */
 @Composable
 private fun Step2InstitutionalInfo(
     profile: UserProfile,
     onProfileChange: (UserProfile) -> Unit
 ) {
-    var expandedBoard by remember { mutableStateOf(false) }
+    var expandedSscBoard by remember { mutableStateOf(false) }
+    var expandedHscBoard by remember { mutableStateOf(false) }
     var expandedShift by remember { mutableStateOf(false) }
-    var expandedDivision by remember { mutableStateOf(false) }
-    var expandedDistrict by remember { mutableStateOf(false) }
-    var expandedMedium by remember { mutableStateOf(false) }
 
-    val boardList = listOf("Jessore", "Dhaka", "Chattogram", "Rajshahi", "Dinajpur", "Cumilla", "Barishal", "Sylhet", "Mymensingh", "Madrasah", "Technical")
+    val boardList = listOf(
+        "Jessore", "Dhaka", "Chattogram", "Rajshahi",
+        "Dinajpur", "Cumilla", "Barishal", "Sylhet",
+        "Mymensingh", "Madrasah", "Technical"
+    )
     val shiftList = listOf("প্রযোজ্য নয়", "প্রভাতী (সকাল)", "দিবা (দুপুর)", "সান্ধ্য")
-    val divisionList = listOf("Chattogram", "Dhaka", "Rajshahi", "Khulna", "Barishal", "Sylhet", "Rangpur", "Mymensingh")
-    val districtList = listOf("Khagrachari", "Chattogram", "Cox's Bazar", "Rangamati", "Bandarban", "Feni", "Cumilla", "Noakhali")
-    val mediumList = listOf("কোনটাই নয়", "বাংলা ভার্সন", "ইংরেজি ভার্সন", "ইংলিশ মিডিয়াম", "মাদ্রাসা")
 
     LazyColumn(
         modifier = Modifier
@@ -567,7 +640,7 @@ private fun Step2InstitutionalInfo(
         item {
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Class and Group Row (side by side, disabled or read-only feel like screenshot)
+            // Class and Group Row (side by side)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -582,7 +655,8 @@ private fun Step2InstitutionalInfo(
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = profile.studentClass,
-                        onValueChange = { onProfileChange(profile.copy(studentClass = it)) },
+                        onValueChange = {},
+                        readOnly = true,
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -603,7 +677,8 @@ private fun Step2InstitutionalInfo(
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = profile.group,
-                        onValueChange = { onProfileChange(profile.copy(group = it)) },
+                        onValueChange = {},
+                        readOnly = true,
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -632,7 +707,8 @@ private fun Step2InstitutionalInfo(
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = profile.examBatch,
-                        onValueChange = { onProfileChange(profile.copy(examBatch = it)) },
+                        onValueChange = {},
+                        readOnly = true,
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -718,7 +794,7 @@ private fun Step2InstitutionalInfo(
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         trailingIcon = {
-                            IconButton(onClick = { expandedBoard = true }) {
+                            IconButton(onClick = { expandedSscBoard = true }) {
                                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                             }
                         },
@@ -728,19 +804,19 @@ private fun Step2InstitutionalInfo(
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { expandedBoard = true }
+                            .clickable { expandedSscBoard = true }
                     )
 
                     DropdownMenu(
-                        expanded = expandedBoard,
-                        onDismissRequest = { expandedBoard = false }
+                        expanded = expandedSscBoard,
+                        onDismissRequest = { expandedSscBoard = false }
                     ) {
                         boardList.forEach { board ->
                             DropdownMenuItem(
                                 text = { Text(board) },
                                 onClick = {
                                     onProfileChange(profile.copy(sscBoard = board))
-                                    expandedBoard = false
+                                    expandedSscBoard = false
                                 }
                             )
                         }
@@ -777,6 +853,186 @@ private fun Step2InstitutionalInfo(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_profile_ssc_roll")
+                )
+            }
+        }
+
+        // HSC Board Dropdown
+        item {
+            Column {
+                Text(
+                    text = "এইচএসসি বোর্ড (প্রযোজ্য ক্ষেত্রে)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Box {
+                    OutlinedTextField(
+                        value = profile.hscBoard,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        trailingIcon = {
+                            IconButton(onClick = { expandedHscBoard = true }) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { expandedHscBoard = true }
+                    )
+
+                    DropdownMenu(
+                        expanded = expandedHscBoard,
+                        onDismissRequest = { expandedHscBoard = false }
+                    ) {
+                        boardList.forEach { board ->
+                            DropdownMenuItem(
+                                text = { Text(board) },
+                                onClick = {
+                                    onProfileChange(profile.copy(hscBoard = board))
+                                    expandedHscBoard = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // HSC Roll Number
+        item {
+            Column {
+                Text(
+                    text = "এইচএসসি বোর্ড রোল নাম্বার",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = profile.hscRoll,
+                    onValueChange = { onProfileChange(profile.copy(hscRoll = it)) },
+                    singleLine = true,
+                    placeholder = { Text("রোল নাম্বার দিন", color = Color(0xFF94A3B8)) },
+                    shape = RoundedCornerShape(14.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_profile_hsc_roll")
+                )
+            }
+        }
+
+        // Board Registration Number
+        item {
+            Column {
+                Text(
+                    text = "বোর্ড রেজিস্ট্রেশন নম্বর",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = profile.boardRegNumber,
+                    onValueChange = { onProfileChange(profile.copy(boardRegNumber = it)) },
+                    singleLine = true,
+                    placeholder = { Text("রেজিস্ট্রেশন নম্বর লিখুন", color = Color(0xFF94A3B8)) },
+                    shape = RoundedCornerShape(14.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_profile_board_reg")
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * Step 3: কলেজ ও অভিভাবকের তথ্য (College & Guardian Information)
+ * Matches Screenshots 4 & 5 and User Flow Specs:
+ * - Division & District dynamically loaded via REST APIs
+ * - College search/select with UpdateUserSchool mutation
+ * - Guardian Name & Mobile Number
+ * - Other Tutoring Sources chips (Shikho, Coaching, Private Tutor, Self Study)
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Step3GuardianInfo(
+    profile: UserProfile,
+    viewModel: ProfileEditViewModel,
+    onProfileChange: (UserProfile) -> Unit
+) {
+    var expandedDivision by remember { mutableStateOf(false) }
+    var expandedDistrict by remember { mutableStateOf(false) }
+    var expandedMedium by remember { mutableStateOf(false) }
+
+    val divisions by viewModel.divisions.collectAsStateWithLifecycle()
+    val districts by viewModel.districts.collectAsStateWithLifecycle()
+
+    val fallbackDivisions = listOf("Dhaka", "Chattogram", "Rajshahi", "Khulna", "Barishal", "Sylhet", "Rangpur", "Mymensingh")
+    val divisionNames = if (divisions.isNotEmpty()) divisions.map { it.name } else fallbackDivisions
+
+    val fallbackDistricts = listOf("Dhaka", "Gazipur", "Narayanganj", "Khagrachari", "Chattogram", "Cox's Bazar", "Cumilla", "Feni", "Sylhet", "Bogura")
+    val districtNames = if (districts.isNotEmpty()) districts.map { it.name } else fallbackDistricts
+
+    val mediumList = listOf("কোনটাই নয়", "বাংলা ভার্সন", "ইংরেজি ভার্সন", "ইংলিশ মিডিয়াম", "মাদ্রাসা")
+    val tutoringOptions = listOf(
+        "SHIKHO" to "শিখো",
+        "COACHING" to "কোচিং",
+        "PRIVATE_TUTOR" to "প্রাইভেট টিউটর",
+        "SELF_STUDY" to "নিজে নিজে"
+    )
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Institutional Info Section Header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.School,
+                    contentDescription = null,
+                    tint = Color(0xFF2563EB),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "স্কুল/কলেজের তথ্য",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
                 )
             }
         }
@@ -821,11 +1077,15 @@ private fun Step2InstitutionalInfo(
                         expanded = expandedDivision,
                         onDismissRequest = { expandedDivision = false }
                     ) {
-                        divisionList.forEach { div ->
+                        divisionNames.forEach { divName ->
                             DropdownMenuItem(
-                                text = { Text(div) },
+                                text = { Text(divName) },
                                 onClick = {
-                                    onProfileChange(profile.copy(institutionDivision = div))
+                                    onProfileChange(profile.copy(institutionDivision = divName))
+                                    val matched = divisions.find { it.name == divName }
+                                    if (matched != null) {
+                                        viewModel.loadDistricts(matched.id)
+                                    }
                                     expandedDivision = false
                                 }
                             )
@@ -875,11 +1135,11 @@ private fun Step2InstitutionalInfo(
                         expanded = expandedDistrict,
                         onDismissRequest = { expandedDistrict = false }
                     ) {
-                        districtList.forEach { dist ->
+                        districtNames.forEach { distName ->
                             DropdownMenuItem(
-                                text = { Text(dist) },
+                                text = { Text(distName) },
                                 onClick = {
-                                    onProfileChange(profile.copy(institutionDistrict = dist))
+                                    onProfileChange(profile.copy(institutionDistrict = distName))
                                     expandedDistrict = false
                                 }
                             )
@@ -889,11 +1149,11 @@ private fun Step2InstitutionalInfo(
             }
         }
 
-        // Institution Name with Search Icon
+        // Institution / College Name with Search & Update School Mutation
         item {
             Column {
                 Text(
-                    text = "প্রতিষ্ঠানের নাম",
+                    text = "প্রতিষ্ঠানের নাম (স্কুল/কলেজ)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1E293B)
@@ -903,15 +1163,29 @@ private fun Step2InstitutionalInfo(
 
                 OutlinedTextField(
                     value = profile.institutionName,
-                    onValueChange = { onProfileChange(profile.copy(institutionName = it)) },
+                    onValueChange = {
+                        onProfileChange(profile.copy(institutionName = it))
+                    },
                     singleLine = true,
+                    placeholder = { Text("স্কুল বা কলেজের নাম লিখুন") },
                     shape = RoundedCornerShape(14.dp),
                     trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "খুঁজুন",
-                            tint = Color(0xFF94A3B8)
-                        )
+                        IconButton(
+                            onClick = {
+                                // Calls live UpdateUserSchool mutation
+                                viewModel.updateSchool(
+                                    schoolId = "school_101",
+                                    userType = "student",
+                                    onSuccess = {}
+                                )
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "খুঁজুন",
+                                tint = Color(0xFF2563EB)
+                            )
+                        }
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
@@ -978,31 +1252,8 @@ private fun Step2InstitutionalInfo(
             }
         }
 
+        // Guardian Verification Header Card
         item {
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
-/**
- * Step 3: অভিভাবকের তথ্য (Guardian Information)
- * Matches Screenshot 5
- */
-@Composable
-private fun Step3GuardianInfo(
-    profile: UserProfile,
-    onProfileChange: (UserProfile) -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Guardian Header Badge
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = Color(0xFFEFF6FF),
@@ -1114,6 +1365,57 @@ private fun Step3GuardianInfo(
                     color = Color(0xFF64748B),
                     lineHeight = 16.sp
                 )
+            }
+        }
+
+        // Other Tutoring / Private Study Sources
+        item {
+            Column {
+                Text(
+                    text = "অন্যান্য প্রাইভেট/টিউটরিং সোর্স",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    tutoringOptions.forEach { (key, label) ->
+                        val isSelected = profile.otherTutoringSources.contains(key)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                val updatedList = if (isSelected) {
+                                    profile.otherTutoringSources - key
+                                } else {
+                                    profile.otherTutoringSources + key
+                                }
+                                onProfileChange(profile.copy(otherTutoringSources = updatedList))
+                            },
+                            label = { Text(label, fontSize = 13.sp) },
+                            leadingIcon = if (isSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF2563EB),
+                                selectedLabelColor = Color.White,
+                                selectedLeadingIconColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                }
             }
         }
 

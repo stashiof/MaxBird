@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -107,6 +110,54 @@ fun HomeScreen(
     var showCourseSwitcherSheet by remember { mutableStateOf(false) }
     var showMonthlyScheduleSheet by remember { mutableStateOf(false) }
     var showProfileOptionsSheet by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    val userProfile = MockStudyData.currentUserProfile
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Logout",
+                    tint = Color(0xFFEF4444)
+                )
+            },
+            title = {
+                Text(
+                    text = "লগ আউট নিশ্চিতকরণ",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "আপনি কি নিশ্চিত যে আপনি আপনার অ্যাকাউন্ট (${userProfile.phone}) থেকে লগ আউট করতে চান?\n\nলগ আউট না করা পর্যন্ত অ্যাপ বন্ধ করলেও লগইন সংরক্ষিত থাকবে।",
+                    fontSize = 14.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        com.example.common.network.UserSessionManager.logout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("হ্যাঁ, লগ আউট করুন", color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("বাতিল")
+                }
+            }
+        )
+    }
 
     val weeklySchedule = remember(selectedCourse.id) {
         MockStudyData.getWeeklySchedule(selectedCourse.id)
@@ -214,7 +265,8 @@ fun HomeScreen(
                 onSyllabusChangeClick = onSyllabusChangeClick,
                 onAdmissionInfoClick = onAdmissionInfoClick,
                 onSettingsClick = onProfileClick,
-                onLoginClick = onLoginClick
+                onLoginClick = onLoginClick,
+                onLogoutClick = { showLogoutDialog = true }
             )
         }
     }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
@@ -63,7 +64,8 @@ fun ProfileOptionsSheet(
     onVideoDownloadsClick: () -> Unit = {},
     onAdmissionInfoClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onLoginClick: () -> Unit = {}
+    onLoginClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val userProfile = MockStudyData.currentUserProfile
@@ -258,19 +260,35 @@ fun ProfileOptionsSheet(
                 testTag = "sheet_option_settings"
             )
 
-            // Option 8: লগইন (Shikho API Auth Login)
+            // Option 8: লগইন / অ্যাকাউন্ট পরিবর্তন (Shikho API Auth Login)
             ProfileOptionRowItem(
                 icon = Icons.Default.Lock,
                 iconBg = Color(0xFFEEF2FF),
                 iconTint = Color(0xFF4F46E5),
-                title = "অ্যাকাউন্টে লগইন",
-                subtitle = "মোবাইল ও পাসওয়ার্ড দিয়ে সাইন-ইন করো",
+                title = if (userProfile.isLoggedIn) "লগইনকৃত অ্যাকাউন্ট পরিবর্তন" else "অ্যাকাউন্টে লগইন",
+                subtitle = if (userProfile.isLoggedIn) "বর্তমান অ্যাকাউন্ট: ${userProfile.phone}" else "মোবাইল ও পাসওয়ার্ড দিয়ে সাইন-ইন করো",
                 onClick = {
                     onDismissRequest()
                     onLoginClick()
                 },
                 testTag = "sheet_option_login"
             )
+
+            // Option 9: লগ আউট (শুধুমাত্র লগইন থাকা অবস্থায় প্রদর্শিত)
+            if (userProfile.isLoggedIn) {
+                ProfileOptionRowItem(
+                    icon = Icons.AutoMirrored.Filled.Logout,
+                    iconBg = Color(0xFFFEE2E2),
+                    iconTint = Color(0xFFEF4444),
+                    title = "লগ আউট করুন",
+                    subtitle = "অ্যাকাউন্ট থেকে সাইন আউট করো",
+                    onClick = {
+                        onDismissRequest()
+                        onLogoutClick()
+                    },
+                    testTag = "sheet_option_logout"
+                )
+            }
         }
     }
 }

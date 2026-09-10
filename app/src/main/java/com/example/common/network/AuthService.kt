@@ -13,10 +13,34 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Result models for 2-step dynamic authentication
+ */
+sealed interface UserCheckResult {
+    data class ExistingUser(val pinExist: Boolean, val rawData: String? = null) : UserCheckResult
+    data class NewUser(val message: String? = null) : UserCheckResult
+    data class Error(val message: String, val statusCode: Int? = null) : UserCheckResult
+}
+
+sealed interface SendSmsResult {
+    data class Success(val message: String = "ওটিপি পাঠানো হয়েছে") : SendSmsResult
+    data class Error(val message: String, val statusCode: Int? = null) : SendSmsResult
+}
+
+sealed interface VerifyOtpResult {
+    data class Success(
+        val accessToken: String,
+        val refreshToken: String? = null,
+        val idToken: String? = null,
+        val userProfile: UserProfile? = null
+    ) : VerifyOtpResult
+    data class Error(val message: String, val statusCode: Int? = null) : VerifyOtpResult
+}
+
+/**
  * Request and Response models for Shikho Auth V2 Login
  */
 data class LoginProfileData(
-    val deviceId: String = "esxGyKOoQsSwaxKKsjil9T:APA91bHl2k9xUMrULVBWEILP2u5PrtTg23D6QOTs-Gx6yTNLiRDRVyCPqe0pA6MGk4AUswD003wMTbrCsYJ96IJf_Sl1E96Kj6CFNWkoUrjiGr4D_8K9ir4"
+    val deviceId: String = "cKA9zLvoSG60q7Zt6VDw56:APA91bGIMX5WNyvb0fzR2NC3kf0p5KZ7sRLaA_VumNWa8PmciBRAreHLkM9zBbKxmLR48PVEoOiKRsaqNObWov33YQpPK4Gpqj97HTsMmrzXX-XIRegCncI"
 )
 
 data class LoginRequestPayload(
@@ -31,6 +55,7 @@ sealed interface LoginResult {
     data class Success(
         val accessToken: String,
         val refreshToken: String? = null,
+        val idToken: String? = null,
         val userProfile: UserProfile? = null,
         val tokenType: String = "Bearer",
         val rawResponse: String? = null
@@ -46,43 +71,44 @@ sealed interface LoginResult {
 /**
  * Cross-platform network service for Authentication.
  * Meets the exact specification:
- * - URL: https://api.shikho.com/auth/v2/login
- * - Method: POST
- * - Headers:
+ * - Default Headers:
  *     - "Accept": "application/json"
+ *     - "Content-Type": "application/json"
  *     - "X-User-Timezone": "Asia/Dhaka"
  *     - "Build-Version": "(605) 6.0.5"
- *     - "User-Agent": "Shikho/(605) 6.0.5 (Android 12; V2029; vivo 2027; en; LTE; )"
- *     - "Content-Type": "application/json"
- * - Payload:
- *     {
- *       "phone": "88" + phoneNumberState,
- *       "otp": passwordState,
- *       "type": "student",
- *       "profile": {
- *         "device_id": "..."
- *       },
- *       "google_ads_id": "e6076d1a-35cc-4b58-b30c-85026db62d0d"
- *     }
- * - Response parsing: tokens.access_token & user profile
+ *     - "User-Agent": "Shikho/(605) 6.0.5 (Android 12; V2029; vivo 2027; en; WIFI; )"
+ *
+ * - Endpoints:
+ *     - Step 1: POST https://api.shikho.com/auth/v2/user/check
+ *     - Step 2-A: POST https://api.shikho.com/auth/v2/login (Existing User PIN)
+ *     - Step 2-B: POST https://api.shikho.com/auth/v2/send/sms & POST https://api.shikho.com/auth/v2/verify/otp (New User / OTP)
+ *     - Step 3: Fetch Profile with Bearer token & in-memory AuthRepository storage
  */
 class AuthService(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
-        .build()
+        .build(),
+    private val authRepository: AuthRepository = InMemoryAuthRepository.shared
 ) {
 
     companion object {
+        const val USER_CHECK_URL = "https://api.shikho.com/auth/v2/user/check"
         const val LOGIN_URL = "https://api.shikho.com/auth/v2/login"
+        const val SEND_SMS_URL = "https://api.shikho.com/auth/v2/send/sms"
+        const val VERIFY_OTP_URL = "https://api.shikho.com/auth/v2/verify/otp"
         const val PROFILE_URL = "https://api.shikho.com/auth/v2/profile"
         const val USER_URL = "https://api.shikho.com/auth/v2/user"
+
         const val HEADER_ACCEPT = "application/json"
         const val HEADER_TIMEZONE = "Asia/Dhaka"
         const val HEADER_BUILD_VERSION = "(605) 6.0.5"
-        const val HEADER_USER_AGENT = "Shikho/(605) 6.0.5 (Android 12; V2029; vivo 2027; en; LTE; )"
+        const val HEADER_USER_AGENT = "Shikho/(605) 6.0.5 (Android 12; V2029; vivo 2027; en; WIFI; )"
         const val MEDIA_TYPE_JSON = "application/json; charset=utf-8"
+
+        const val DEFAULT_DEVICE_ID = "cKA9zLvoSG60q7Zt6VDw56:APA91bGIMX5WNyvb0fzR2NC3kf0p5KZ7sRLaA_VumNWa8PmciBRAreHLkM9zBbKxmLR48PVEoOiKRsaqNObWov33YQpPK4Gpqj97HTsMmrzXX-XIRegCncI"
+        const val DEFAULT_GOOGLE_ADS_ID = "e6076d1a-35cc-4b58-b30c-85026db62d0d"
 
         /**
          * Extracts and maps user information from API JSON responses (name, avatar, college, class, etc.)
@@ -262,6 +288,207 @@ class AuthService(
     }
 
     /**
+     * Step 1: Checks user existence by phone number.
+     * POST https://api.shikho.com/auth/v2/user/check
+     * Returns ExistingUser if pin_exist == true,
+     * Returns NewUser if status 404 or pin_exist == false.
+     */
+    suspend fun checkUser(phoneNumber: String): UserCheckResult = withContext(Dispatchers.IO) {
+        val cleanPhone = phoneNumber.trim().removePrefix("+88").removePrefix("88")
+        val formattedPhone = "88$cleanPhone"
+
+        val bodyJson = JSONObject().apply {
+            put("phone", formattedPhone)
+            put("type", "student")
+        }
+        val requestBody = bodyJson.toString().toRequestBody(MEDIA_TYPE_JSON.toMediaType())
+
+        val request = Request.Builder()
+            .url(USER_CHECK_URL)
+            .post(requestBody)
+            .addHeader("Accept", HEADER_ACCEPT)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-User-Timezone", HEADER_TIMEZONE)
+            .addHeader("Build-Version", HEADER_BUILD_VERSION)
+            .addHeader("User-Agent", HEADER_USER_AGENT)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBodyString = response.body?.string().orEmpty()
+                val statusCode = response.code
+
+                if (statusCode == 404) {
+                    return@withContext UserCheckResult.NewUser("ব্যবহারকারী পাওয়া যায়নি (নতুন অ্যাকাউন্ট)")
+                }
+
+                if (response.isSuccessful && responseBodyString.isNotEmpty()) {
+                    val json = JSONObject(responseBodyString)
+                    val dataObj = json.optJSONObject("data") ?: json
+                    val pinExist = dataObj.optBoolean("pin_exist", false) || json.optBoolean("pin_exist", false)
+                    if (pinExist) {
+                        UserCheckResult.ExistingUser(pinExist = true, rawData = responseBodyString)
+                    } else {
+                        UserCheckResult.NewUser("পিন বিদ্যমান নেই, ওটিপি পাঠানো হচ্ছে")
+                    }
+                } else {
+                    val errorMsg = try {
+                        val errObj = JSONObject(responseBodyString)
+                        errObj.optString("message", "যাচাই ব্যর্থ হয়েছে ($statusCode)")
+                    } catch (_: Exception) {
+                        "যাচাই ব্যর্থ হয়েছে ($statusCode)"
+                    }
+                    UserCheckResult.Error(message = errorMsg, statusCode = statusCode)
+                }
+            }
+        } catch (e: Exception) {
+            UserCheckResult.Error(message = "ইন্টারনেট সংযোগে ত্রুটি: ${e.localizedMessage ?: "নেটওয়ার্ক সমস্যা"}")
+        }
+    }
+
+    /**
+     * Step 2-B (Part 1): Sends SMS OTP for new user or OTP verification flow.
+     * POST https://api.shikho.com/auth/v2/send/sms
+     */
+    suspend fun sendSms(phoneNumber: String): SendSmsResult = withContext(Dispatchers.IO) {
+        val cleanPhone = phoneNumber.trim().removePrefix("+88").removePrefix("88")
+        val formattedPhone = "88$cleanPhone"
+
+        val bodyJson = JSONObject().apply {
+            put("phone", formattedPhone)
+            put("type", "student")
+            put("auth_type", "signup")
+            put("vendor", "shikho")
+            put("google_ads_id", DEFAULT_GOOGLE_ADS_ID)
+        }
+        val requestBody = bodyJson.toString().toRequestBody(MEDIA_TYPE_JSON.toMediaType())
+
+        val request = Request.Builder()
+            .url(SEND_SMS_URL)
+            .post(requestBody)
+            .addHeader("Accept", HEADER_ACCEPT)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-User-Timezone", HEADER_TIMEZONE)
+            .addHeader("Build-Version", HEADER_BUILD_VERSION)
+            .addHeader("User-Agent", HEADER_USER_AGENT)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBodyString = response.body?.string().orEmpty()
+                val statusCode = response.code
+
+                if (response.isSuccessful) {
+                    val message = try {
+                        val json = JSONObject(responseBodyString)
+                        json.optString("message", "আপনার নম্বরে ওটিপি কোড পাঠানো হয়েছে")
+                    } catch (_: Exception) {
+                        "আপনার নম্বরে ওটিপি কোড পাঠানো হয়েছে"
+                    }
+                    SendSmsResult.Success(message = message)
+                } else {
+                    val errorMsg = try {
+                        val errObj = JSONObject(responseBodyString)
+                        errObj.optString("message", "ওটিপি পাঠানো যায়নি ($statusCode)")
+                    } catch (_: Exception) {
+                        "ওটিপি পাঠানো যায়নি ($statusCode)"
+                    }
+                    SendSmsResult.Error(message = errorMsg, statusCode = statusCode)
+                }
+            }
+        } catch (e: Exception) {
+            SendSmsResult.Error(message = "ওটিপি রিকোয়েস্ট ব্যর্থ: ${e.localizedMessage ?: "নেটওয়ার্ক সমস্যা"}")
+        }
+    }
+
+    /**
+     * Step 2-B (Part 2): Verifies SMS OTP code and retrieves tokens.
+     * POST https://api.shikho.com/auth/v2/verify/otp
+     */
+    suspend fun verifyOtp(phoneNumber: String, otpInput: String): VerifyOtpResult = withContext(Dispatchers.IO) {
+        val cleanPhone = phoneNumber.trim().removePrefix("+88").removePrefix("88")
+        val formattedPhone = "88$cleanPhone"
+
+        val bodyJson = JSONObject().apply {
+            put("phone", formattedPhone)
+            put("otp", otpInput.trim())
+            put("type", "student")
+        }
+        val requestBody = bodyJson.toString().toRequestBody(MEDIA_TYPE_JSON.toMediaType())
+
+        val request = Request.Builder()
+            .url(VERIFY_OTP_URL)
+            .post(requestBody)
+            .addHeader("Accept", HEADER_ACCEPT)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-User-Timezone", HEADER_TIMEZONE)
+            .addHeader("Build-Version", HEADER_BUILD_VERSION)
+            .addHeader("User-Agent", HEADER_USER_AGENT)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBodyString = response.body?.string().orEmpty()
+                val statusCode = response.code
+
+                if (response.isSuccessful && responseBodyString.isNotEmpty()) {
+                    val jsonObject = JSONObject(responseBodyString)
+                    val dataObj = jsonObject.optJSONObject("data") ?: jsonObject
+                    val tokensObj = dataObj.optJSONObject("tokens") ?: jsonObject.optJSONObject("tokens")
+
+                    val accessToken = tokensObj?.optString("access_token")
+                        ?: dataObj.optString("access_token")
+                        ?: jsonObject.optString("token")
+                        ?: jsonObject.optString("access_token")
+                        ?: ""
+
+                    val refreshToken = tokensObj?.optString("refresh_token")
+                    val idToken = tokensObj?.optString("id_token")
+
+                    val validToken = if (accessToken.isNotEmpty()) accessToken else "session_token_${System.currentTimeMillis()}"
+
+                    // Save token in repository and persistent storage
+                    authRepository.saveTokens(validToken, refreshToken, idToken)
+
+                    // Parse profile
+                    var studentProfile = parseUserProfileFromJson(
+                        jsonString = responseBodyString,
+                        fallbackPhone = cleanPhone
+                    )
+                    if (validToken.isNotEmpty()) {
+                        studentProfile = fetchUserProfile(validToken, studentProfile)
+                    }
+                    studentProfile = studentProfile.copy(isLoggedIn = true)
+                    MockStudyData.currentUserProfile = studentProfile
+                    UserSessionManager.saveSession(
+                        accessToken = validToken,
+                        refreshToken = refreshToken,
+                        idToken = idToken,
+                        profile = studentProfile
+                    )
+
+                    VerifyOtpResult.Success(
+                        accessToken = validToken,
+                        refreshToken = refreshToken,
+                        idToken = idToken,
+                        userProfile = studentProfile
+                    )
+                } else {
+                    val errorMsg = try {
+                        val errObj = JSONObject(responseBodyString)
+                        errObj.optString("message", "ভুল ওটিপি কোড ($statusCode)")
+                    } catch (_: Exception) {
+                        "ওটিপি যাচাই ব্যর্থ হয়েছে ($statusCode)"
+                    }
+                    VerifyOtpResult.Error(message = errorMsg, statusCode = statusCode)
+                }
+            }
+        } catch (e: Exception) {
+            VerifyOtpResult.Error(message = "ওটিপি ভেরিফিকেশন ব্যর্থ: ${e.localizedMessage ?: "নেটওয়ার্ক সমস্যা"}")
+        }
+    }
+
+    /**
      * Executes the login POST request with the specified phone number and otp/password.
      */
     suspend fun login(phoneNumber: String, otpOrPassword: String): LoginResult = withContext(Dispatchers.IO) {
@@ -270,10 +497,7 @@ class AuthService(
 
         // Build exact JSON body payload
         val profileJson = JSONObject().apply {
-            put(
-                "device_id",
-                "esxGyKOoQsSwaxKKsjil9T:APA91bHl2k9xUMrULVBWEILP2u5PrtTg23D6QOTs-Gx6yTNLiRDRVyCPqe0pA6MGk4AUswD003wMTbrCsYJ96IJf_Sl1E96Kj6CFNWkoUrjiGr4D_8K9ir4"
-            )
+            put("device_id", DEFAULT_DEVICE_ID)
         }
 
         val requestJson = JSONObject().apply {
@@ -281,7 +505,7 @@ class AuthService(
             put("otp", otpOrPassword.trim())
             put("type", "student")
             put("profile", profileJson)
-            put("google_ads_id", "e6076d1a-35cc-4b58-b30c-85026db62d0d")
+            put("google_ads_id", DEFAULT_GOOGLE_ADS_ID)
         }
 
         val requestBody = requestJson.toString().toRequestBody(MEDIA_TYPE_JSON.toMediaType())
@@ -314,30 +538,43 @@ class AuthService(
                             ?: jsonObject.optString("token")
                             ?: jsonObject.optString("access_token")
 
+                        val refreshToken = tokensObj?.optString("refresh_token")
+                        val idToken = tokensObj?.optString("id_token")
+
                         // 1. Initial parse of user profile from the login response body
                         var studentProfile = parseUserProfileFromJson(
                             jsonString = responseBodyString,
                             fallbackPhone = cleanPhone
                         )
 
-                        val validToken = if (accessToken.isNotEmpty()) {
+                        val validToken = if (!accessToken.isNullOrEmpty()) {
                             accessToken
                         } else {
                             "session_token_${System.currentTimeMillis()}"
                         }
 
+                        // Save in auth repository
+                        authRepository.saveTokens(validToken, refreshToken, idToken)
+
                         // 2. Fetch full profile using the access token if available
-                        if (accessToken.isNotEmpty()) {
+                        if (!accessToken.isNullOrEmpty()) {
                             studentProfile = fetchUserProfile(accessToken, studentProfile)
                         }
 
-                        // 3. Immediately sync to MockStudyData.currentUserProfile
+                        // 3. Immediately sync to MockStudyData.currentUserProfile and persistent storage
+                        studentProfile = studentProfile.copy(isLoggedIn = true)
                         MockStudyData.currentUserProfile = studentProfile
+                        UserSessionManager.saveSession(
+                            accessToken = validToken,
+                            refreshToken = refreshToken,
+                            idToken = idToken,
+                            profile = studentProfile
+                        )
 
-                        val refreshToken = tokensObj?.optString("refresh_token")
                         LoginResult.Success(
                             accessToken = validToken,
                             refreshToken = refreshToken,
+                            idToken = idToken,
                             userProfile = studentProfile,
                             rawResponse = responseBodyString
                         )

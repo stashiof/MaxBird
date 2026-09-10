@@ -98,7 +98,11 @@ data class LectureItem(
     val instructorName: String = "হিরন্ময় বাউলিয়া",
     val instructorBio: String = "এম.এস.এস, এম.ফিল, ঢাবি '০৮\nবাংলা শিক্ষক",
     val instructorExp: String = "১৬ বছর+ শিক্ষকতার অভিজ্ঞতা",
-    val instructorStudents: String = "১০ লক্ষ+ শিক্ষার্থী পড়েছেন"
+    val instructorStudents: String = "১০ লক্ষ+ শিক্ষার্থী পড়েছেন",
+    val recordingUrl: String = "",
+    val videoStreamUrl: String = "",
+    val topics: List<String> = emptyList(),
+    val pdfUrl: String = ""
 )
 
 object MockStudyData {
@@ -591,12 +595,16 @@ data class UserProfile(
     val classShift: String = "প্রযোজ্য নয়",
     val sscBoard: String = "Jessore",
     val sscRoll: String = "762180",
+    val hscBoard: String = "Jessore",
+    val hscRoll: String = "",
+    val boardRegNumber: String = "",
     val institutionDivision: String = "Chattogram",
     val institutionDistrict: String = "Khagrachari",
     val institutionName: String = "GOJAPARA JUNIOR SCHOOL",
     val educationMedium: String = "কোনটাই নয়",
     val guardianName: String = "Julia begum",
     val guardianPhone: String = "01774077462",
+    val otherTutoringSources: List<String> = emptyList(),
     val isLoggedIn: Boolean = false
 )
 
