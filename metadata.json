@@ -1,0 +1,6 @@
+{
+  "name": "MaxBird",
+  "description": "MaxBird cross-platform study application designed for Android and Desktop with modern Compose UI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
