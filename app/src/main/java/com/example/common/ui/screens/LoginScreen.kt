@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.common.ui.components.UserAvatarView
 import com.example.common.model.MockStudyData
 import com.example.common.model.UserProfile
 import com.example.common.network.AuthService
@@ -997,32 +998,13 @@ private fun SuccessStateContent(
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Profile avatar
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE0E7FF)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (profile.avatarUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = profile.avatarUrl,
-                            contentDescription = profile.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
-                        )
-                    } else {
-                        Text(
-                            text = profile.name.take(1),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF4F46E5)
-                        )
-                    }
-                }
+                // Profile avatar with fallback letter & gradient
+                UserAvatarView(
+                    avatarUrl = profile.avatarUrl,
+                    name = profile.name,
+                    size = 56.dp,
+                    fontSize = 20.sp
+                )
 
                 Spacer(modifier = Modifier.width(14.dp))
 

@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.common.ui.components.UserAvatarView
 import com.example.common.model.MockStudyData
 import com.example.common.model.UserProfile
 
@@ -264,36 +265,14 @@ private fun ProfileHeader(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF2563EB),
-                                    Color(0xFF4F46E5)
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (userProfile.avatarUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = userProfile.avatarUrl,
-                            contentDescription = userProfile.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Text(
-                            text = if (userProfile.name.isNotBlank()) userProfile.name.take(2).uppercase() else "FF",
-                            color = Color.White,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 24.sp
-                        )
-                    }
-                }
+                UserAvatarView(
+                    avatarUrl = userProfile.avatarUrl,
+                    name = userProfile.name,
+                    size = 72.dp,
+                    fontSize = 26.sp,
+                    borderColor = Color(0xFF2563EB).copy(alpha = 0.5f),
+                    borderWidth = 2.dp
+                )
 
                 Spacer(modifier = Modifier.width(16.dp))
 

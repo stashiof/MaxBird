@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import com.example.common.ui.components.UserAvatarView
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -389,23 +390,51 @@ private fun NavyHeroHeaderSection(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Title: হ্যালো, FFMAX 👋
+                // Title: শুভ দিন, {user.name} 👋
                 Text(
-                    text = "হ্যালো, ${MockStudyData.currentUserProfile.name} 👋",
+                    text = "শুভ দিন, ${MockStudyData.currentUserProfile.name} 👋",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White
                 )
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Subtitle: এইচএসসি - বিজ্ঞান - এইচএসসি ২০২৭ • GOJAP...
-                Text(
-                    text = "${MockStudyData.currentUserProfile.studentClass} - ${MockStudyData.currentUserProfile.group} - ${MockStudyData.currentUserProfile.examBatch} • ${MockStudyData.currentUserProfile.institutionName.take(10)}...",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF94A3B8)
-                )
+                // Subtitle & Class Badge: {user.className}
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF334155).copy(alpha = 0.8f)
+                    ) {
+                        Text(
+                            text = MockStudyData.currentUserProfile.studentClass.ifBlank { "এইচএসসি" },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF60A5FA),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (MockStudyData.currentUserProfile.group.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "• ${MockStudyData.currentUserProfile.group}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+
+                    if (MockStudyData.currentUserProfile.examBatch.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "• ${MockStudyData.currentUserProfile.examBatch}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                }
             }
 
             // Right: Profile Avatar with Gold ring, 👑 crown, and 🔥 streak badge (Clickable to open profile & settings)
@@ -417,35 +446,15 @@ private fun NavyHeroHeaderSection(
                     .testTag("home_profile_avatar"),
                 contentAlignment = Alignment.Center
             ) {
-                // Avatar with gold ring
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .border(2.5.dp, GoldCrownColor, CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF1E293B), Color(0xFF334155))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (MockStudyData.currentUserProfile.avatarUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = MockStudyData.currentUserProfile.avatarUrl,
-                            contentDescription = MockStudyData.currentUserProfile.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "প্রোফাইল ও সেটিংস দেখুন",
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
+                // Modern UserAvatarView with CDN support + gradient letter fallback
+                UserAvatarView(
+                    avatarUrl = MockStudyData.currentUserProfile.avatarUrl,
+                    name = MockStudyData.currentUserProfile.name,
+                    size = 56.dp,
+                    fontSize = 22.sp,
+                    borderColor = GoldCrownColor,
+                    borderWidth = 2.5.dp
+                )
 
                 // Crown 👑 badge on top right of avatar
                 Box(

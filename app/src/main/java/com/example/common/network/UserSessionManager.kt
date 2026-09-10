@@ -174,6 +174,7 @@ object UserSessionManager {
 
     private fun serializeProfileToJson(profile: UserProfile): String {
         val json = JSONObject()
+        json.put("id", profile.id)
         json.put("name", profile.name)
         json.put("phone", profile.phone)
         json.put("birthDate", profile.birthDate)
@@ -215,26 +216,27 @@ object UserSessionManager {
             }
 
             UserProfile(
-                name = json.optString("name", "FFMAX"),
-                phone = json.optString("phone", "01774077462"),
-                birthDate = json.optString("birthDate", "16 Jan, 2008"),
-                gender = json.optString("gender", "ছাত্র"),
+                id = json.optString("id", ""),
+                name = json.optString("name", "Student"),
+                phone = json.optString("phone", ""),
+                birthDate = json.optString("birthDate", ""),
+                gender = json.optString("gender", ""),
                 avatarUrl = json.optString("avatarUrl", ""),
                 studentClass = json.optString("studentClass", "এইচএসসি"),
-                group = json.optString("group", "বিজ্ঞান"),
-                examBatch = json.optString("examBatch", "এইচএসসি ২০২৭"),
-                classShift = json.optString("classShift", "প্রযোজ্য নয়"),
-                sscBoard = json.optString("sscBoard", "Jessore"),
-                sscRoll = json.optString("sscRoll", "762180"),
-                hscBoard = json.optString("hscBoard", "Jessore"),
+                group = json.optString("group", ""),
+                examBatch = json.optString("examBatch", ""),
+                classShift = json.optString("classShift", ""),
+                sscBoard = json.optString("sscBoard", ""),
+                sscRoll = json.optString("sscRoll", ""),
+                hscBoard = json.optString("hscBoard", ""),
                 hscRoll = json.optString("hscRoll", ""),
                 boardRegNumber = json.optString("boardRegNumber", ""),
-                institutionDivision = json.optString("institutionDivision", "Chattogram"),
-                institutionDistrict = json.optString("institutionDistrict", "Khagrachari"),
-                institutionName = json.optString("institutionName", "GOJAPARA JUNIOR SCHOOL"),
-                educationMedium = json.optString("educationMedium", "কোনটাই নয়"),
-                guardianName = json.optString("guardianName", "Julia begum"),
-                guardianPhone = json.optString("guardianPhone", "01774077462"),
+                institutionDivision = json.optString("institutionDivision", ""),
+                institutionDistrict = json.optString("institutionDistrict", ""),
+                institutionName = json.optString("institutionName", ""),
+                educationMedium = json.optString("educationMedium", ""),
+                guardianName = json.optString("guardianName", ""),
+                guardianPhone = json.optString("guardianPhone", ""),
                 otherTutoringSources = tutoringList,
                 isLoggedIn = json.optBoolean("isLoggedIn", true)
             )

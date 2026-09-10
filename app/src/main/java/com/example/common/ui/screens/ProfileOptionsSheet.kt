@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.common.model.MockStudyData
+import com.example.common.ui.components.UserAvatarView
 
 /**
  * Profile quick action bottom sheet exactly matching Screenshot 1 (Screenshot_20260910_064016.jpg)
@@ -89,30 +90,13 @@ fun ProfileOptionsSheet(
                     .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Profile Avatar Photo / Circular badge
-                Box(
-                    modifier = Modifier
-                        .size(60.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF334155)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (userProfile.avatarUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = userProfile.avatarUrl,
-                            contentDescription = userProfile.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Text(
-                            text = if (userProfile.name.isNotBlank()) userProfile.name.take(2).uppercase() else "👦",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
+                // Profile Avatar Photo / Dynamic letter fallback
+                UserAvatarView(
+                    avatarUrl = userProfile.avatarUrl,
+                    name = userProfile.name,
+                    size = 60.dp,
+                    fontSize = 22.sp
+                )
 
                 Spacer(modifier = Modifier.width(14.dp))
 

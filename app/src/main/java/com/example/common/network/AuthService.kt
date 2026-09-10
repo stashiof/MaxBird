@@ -132,6 +132,13 @@ class AuthService(
                     ?: profileSubObj?.optJSONObject("institution")
                     ?: dataObj.optJSONObject("institution")
 
+                // 0. ID
+                val parsedId = userObj.optString("id").takeIf { it.isNotBlank() }
+                    ?: userObj.optString("user_id").takeIf { it.isNotBlank() }
+                    ?: userObj.optString("student_id").takeIf { it.isNotBlank() }
+                    ?: profileSubObj?.optString("id")?.takeIf { it.isNotBlank() }
+                    ?: dataObj.optString("id").takeIf { it.isNotBlank() }
+
                 // 1. Name
                 val parsedName = userObj.optString("name").takeIf { it.isNotBlank() }
                     ?: userObj.optString("full_name").takeIf { it.isNotBlank() }
@@ -243,6 +250,7 @@ class AuthService(
                     sscRoll = parsedRoll ?: baseProfile.sscRoll,
                     institutionDivision = parsedDivision ?: baseProfile.institutionDivision,
                     institutionDistrict = parsedDistrict ?: baseProfile.institutionDistrict,
+                    id = parsedId ?: baseProfile.id,
                     isLoggedIn = true
                 )
             } catch (_: Exception) {
@@ -252,10 +260,100 @@ class AuthService(
     }
 
     /**
+     * Step 4: GraphQL API sync for student details, batches, roll, and academic info
+     * POST https://api.shikho.com/graphql
+     */
+    suspend fun syncStudentProfileFromGraphQL(accessToken: String, currentProfile: UserProfile): UserProfile = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) return@withContext currentProfile
+
+        val graphqlUrl = "https://api.shikho.com/graphql"
+        val query = """
+            query GetStudentAcademicInfo {
+              studentProfile {
+                id
+                name
+                phone
+                avatar
+                class_name
+                group
+                exam_batch
+                roll
+                school {
+                  name
+                }
+                enrollments {
+                  id
+                  batch_name
+                  course_title
+                }
+              }
+            }
+        """.trimIndent()
+
+        val payload = JSONObject().apply {
+            put("query", query)
+        }
+
+        try {
+            val request = Request.Builder()
+                .url(graphqlUrl)
+                .post(payload.toString().toRequestBody(MEDIA_TYPE_JSON.toMediaType()))
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Accept", HEADER_ACCEPT)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-User-Timezone", HEADER_TIMEZONE)
+                .addHeader("Build-Version", HEADER_BUILD_VERSION)
+                .addHeader("User-Agent", HEADER_USER_AGENT)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    if (body.isNotBlank()) {
+                        val rootJson = JSONObject(body)
+                        val dataObj = rootJson.optJSONObject("data")
+                        val studentObj = dataObj?.optJSONObject("studentProfile")
+                            ?: dataObj?.optJSONObject("profile")
+                            ?: dataObj?.optJSONObject("user")
+
+                        if (studentObj != null) {
+                            val gqlName = studentObj.optString("name").takeIf { it.isNotBlank() }
+                            val gqlAvatar = studentObj.optString("avatar").takeIf { it.isNotBlank() }
+                            val gqlClass = studentObj.optString("class_name").takeIf { it.isNotBlank() }
+                            val gqlGroup = studentObj.optString("group").takeIf { it.isNotBlank() }
+                            val gqlBatch = studentObj.optString("exam_batch").takeIf { it.isNotBlank() }
+                            val gqlRoll = studentObj.optString("roll").takeIf { it.isNotBlank() }
+                            val schoolObj = studentObj.optJSONObject("school")
+                            val gqlSchool = schoolObj?.optString("name")?.takeIf { it.isNotBlank() }
+                            val gqlId = studentObj.optString("id").takeIf { it.isNotBlank() }
+
+                            return@withContext currentProfile.copy(
+                                id = gqlId ?: currentProfile.id,
+                                name = gqlName ?: currentProfile.name,
+                                avatarUrl = gqlAvatar ?: currentProfile.avatarUrl,
+                                studentClass = gqlClass ?: currentProfile.studentClass,
+                                group = gqlGroup ?: currentProfile.group,
+                                examBatch = gqlBatch ?: currentProfile.examBatch,
+                                sscRoll = gqlRoll ?: currentProfile.sscRoll,
+                                institutionName = gqlSchool ?: currentProfile.institutionName,
+                                isLoggedIn = true
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Gracefully ignore GraphQL network failure
+        }
+        currentProfile
+    }
+
+    /**
      * Attempts to fetch full student profile from Shikho API using the Bearer token.
      */
     suspend fun fetchUserProfile(accessToken: String, currentProfile: UserProfile): UserProfile = withContext(Dispatchers.IO) {
         val urlsToTry = listOf(PROFILE_URL, USER_URL)
+        var updatedProfile = currentProfile
         for (url in urlsToTry) {
             try {
                 val request = Request.Builder()
@@ -272,19 +370,22 @@ class AuthService(
                     if (response.isSuccessful) {
                         val body = response.body?.string().orEmpty()
                         if (body.isNotBlank()) {
-                            return@withContext parseUserProfileFromJson(
+                            updatedProfile = parseUserProfileFromJson(
                                 jsonString = body,
                                 fallbackPhone = currentProfile.phone,
-                                baseProfile = currentProfile
+                                baseProfile = updatedProfile
                             )
                         }
                     }
                 }
             } catch (_: Exception) {
-                // Ignore and try fallback url or return current
+                // Ignore and try fallback url
             }
         }
-        currentProfile
+
+        // Also sync via GraphQL
+        updatedProfile = syncStudentProfileFromGraphQL(accessToken, updatedProfile)
+        updatedProfile
     }
 
     /**

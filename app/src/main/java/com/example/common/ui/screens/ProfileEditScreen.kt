@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.common.ui.components.UserAvatarView
 import com.example.common.model.MockStudyData
 import com.example.common.model.UserProfile
 import com.example.common.viewmodel.ProfileEditViewModel
@@ -359,14 +360,6 @@ private fun Step1PersonalInfo(
                 Box(contentAlignment = Alignment.BottomEnd) {
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, Color(0xFF2563EB), CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF1E293B), Color(0xFF3B82F6))
-                                )
-                            )
                             .clickable {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -375,21 +368,14 @@ private fun Step1PersonalInfo(
                             .testTag("avatar_picker_box"),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (profile.avatarUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = profile.avatarUrl,
-                                contentDescription = "প্রোফাইল পিকচার",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "প্রোফাইল পিকচার",
-                                tint = Color.White,
-                                modifier = Modifier.size(60.dp)
-                            )
-                        }
+                        UserAvatarView(
+                            avatarUrl = profile.avatarUrl,
+                            name = profile.name,
+                            size = 100.dp,
+                            fontSize = 36.sp,
+                            borderColor = Color(0xFF2563EB),
+                            borderWidth = 3.dp
+                        )
                     }
 
                     // Camera Icon Badge
